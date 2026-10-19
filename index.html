@@ -1,1 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CXPHER BUZZER</title>
+<style>
+:root {
+  color-scheme: dark;
+  --green: #39ff88;
+  --bg: #080c0a;
+  --panel: #101813;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 28px 18px;
+  background:
+    radial-gradient(ellipse at 50% 0%, #153c27 0%, transparent 55%),
+    var(--bg);
+  color: #eafff0;
+  font-family: system-ui, sans-serif;
+  display: grid;
+  place-items: center;
+}
+main { width: 100%; max-width: 430px; }
+header { display:flex; justify-content:space-between; align-items:center; }
+h1 { font-size: 22px; letter-spacing: 2px; }
+small { color: #8ca895; }
+.status {
+  color: var(--green);
+  font-size: 11px;
+  letter-spacing: 1px;
+  border: 1px solid #235c3b;
+  padding: 8px 10px;
+  border-radius: 30px;
+}
+.panel {
+  margin-top: 24px;
+  padding: 25px 20px;
+  border: 1px solid #243b2c;
+  background: linear-gradient(145deg, #142019, #0b100d);
+  border-radius: 25px;
+  text-align: center;
+  box-shadow: 0 15px 60px #0008;
+}
+.orb {
+  width: 145px;
+  height: 145px;
+  border: 2px solid #31523d;
+  border-radius: 50%;
+  margin: 30px auto 22px;
+  display:grid;
+  place-items:center;
+  background: #0d1911;
+  color: var(--green);
+  box-shadow: 0 0 35px #39ff8815, inset 0 0 25px #39ff880c;
+  transition: .25s;
+}
+.orb.active {
+  border-color: var(--green);
+  box-shadow: 0 0 35px #39ff8870, inset 0 0 35px #39ff8820;
+  animation: pulse 1.2s infinite alternate;
+}
+@keyframes pulse {
+  from { transform: scale(1); }
+  to { transform: scale(1.045); }
+}
+.orb span { font-size: 42px; }
+h2 { font-size: 18px; margin: 0 0 7px; }
+p { color:#8ca895; font-size:13px; }
+button {
+  width:100%; padding:16px; margin-top:12px;
+  border-radius:14px; border:1px solid #31513c;
+  background:#17251b; color:#eafff0;
+  font:600 15px system-ui; cursor:pointer;
+}
+button.primary {
+  background:var(--green); color:#07140b;
+  border-color:var(--green);
+  box-shadow:0 0 22px #39ff8825;
+}
+button:active { transform:scale(.98); }
+button:disabled { opacity:.4; cursor:not-allowed; }
+.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+footer { text-align:center; margin-top:22px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>CXPHER<span style="color:#39ff88">.</span></h1>
+      <small>HARDWARE CONTROL SYSTEM</small>
+    </div>
+    <div class="status" id="status">● OFFLINE</div>
+  </header>
 
+  <section class="panel">
+    <small>DEVICE / KY-012</small>
+    <div class="orb" id="orb"><span>ϟ</span></div>
+    <h2 id="state">SYSTEM STANDBY</h2>
+    <p id="message">Connect your ESP32 to begin.</p>
+
+    <button class="primary" id="connect">⌁ CONNECT ESP32</button>
+    <button id="power" disabled>POWER ON</button>
+
+    <div class="grid">
+      <button id="pulse" disabled>PULSE · 3 TIMES</button>
+      <button id="disconnect" disabled>DISCONNECT</button>
+    </div>
+    <p id="note">Web Bluetooth · Secure connection required</p>
+  </section>
+  <footer><small>CXPHER LABS · ESP32 PROJECT</small></footer>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let device, server, characteristic, active = false;
+
+function status(text) { $("status").textContent = "● " + text; }
+function paint(on) {
+  active = on;
+  $("orb").classList.toggle("active", on);
+  $("state").textContent = on ? "BUZZER ACTIVE" : "SYSTEM STANDBY";
+  $("power").textContent = on ? "POWER OFF" : "POWER ON";
+}
+async function send(command) {
+  if (!characteristic) throw Error("Connect to the ESP32 first.");
+  const data = new TextEncoder().encode(command);
+  if (characteristic.properties.writeWithoutResponse &&
+      !characteristic.properties.write) {
+    await characteristic.writeValueWithoutResponse(data);
+  } else {
+    await characteristic.writeValue(data);
+  }
+}
+$("connect").onclick = async () => {
+  try {
+    $("message").textContent = "Searching for ESP32...";
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: "Cxpher_Buzzer" }],
+      optionalServices: ["12345678-1234-1234-1234-1234567890ab"]
+    });
+    device.addEventListener("gattserverdisconnected", () => {
+      server = characteristic = null;
+      status("OFFLINE");
+      $("message").textContent = "Device disconnected.";
+      $("power").disabled = $("pulse").disabled = $("disconnect").disabled = true;
+      $("connect").disabled = false;
+      paint(false);
+    });
+    server = await device.gatt.connect();
+    const service = await server.getPrimaryService(
+      "12345678-1234-1234-1234-1234567890ab"
+    );
+    characteristic = await service.getCharacteristic(
+      "abcdefab-1234-1234-1234-abcdefabcdef"
+    );
+    status("CONNECTED");
+    $("message").textContent = "Bluetooth link established.";
+    $("connect").disabled = false;
+    $("power").disabled = $("pulse").disabled = $("disconnect").disabled = false;
+    paint(false);
+  } catch (e) {
+    $("message").textContent = e.message || "Connection failed.";
+    status("OFFLINE");
+  }
+};
+$("power").onclick = async () => {
+  try {
+    await send(active ? "OFF" : "ON");
+    paint(!active);
+  } catch (e) { $("message").textContent = e.message; }
+};
+$("pulse").onclick = async () => {
+  try {
+    for (let i = 0; i < 3; i++) {
+      await send("ON");
+      await new Promise(r => setTimeout(r, 250));
+      await send("OFF");
+      await new Promise(r => setTimeout(r, 250));
+    }
+    paint(false);
+  } catch (e) { $("message").textContent = e.message; }
+};
+$("disconnect").onclick = () => {
+  if (device?.gatt?.connected) device.gatt.disconnect();
+};
+if (!navigator.bluetooth) {
+  $("message").textContent = "Open this page in a supported browser over HTTPS.";
+  $("connect").disabled = true;
+}
+</script>
+</body>
+                                                      </html>
+                                                      
