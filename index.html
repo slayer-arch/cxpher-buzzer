@@ -1,197 +1,661 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CXPHER BUZZER</title>
-<style>
-:root {
-  color-scheme: dark;
-  --green: #39ff88;
-  --bg: #080c0a;
-  --panel: #101813;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  min-height: 100vh;
-  padding: 28px 18px;
-  background:
-    radial-gradient(ellipse at 50% 0%, #153c27 0%, transparent 55%),
-    var(--bg);
-  color: #eafff0;
-  font-family: system-ui, sans-serif;
-  display: grid;
-  place-items: center;
-}
-main { width: 100%; max-width: 430px; }
-header { display:flex; justify-content:space-between; align-items:center; }
-h1 { font-size: 22px; letter-spacing: 2px; }
-small { color: #8ca895; }
-.status {
-  color: var(--green);
-  font-size: 11px;
-  letter-spacing: 1px;
-  border: 1px solid #235c3b;
-  padding: 8px 10px;
-  border-radius: 30px;
-}
-.panel {
-  margin-top: 24px;
-  padding: 25px 20px;
-  border: 1px solid #243b2c;
-  background: linear-gradient(145deg, #142019, #0b100d);
-  border-radius: 25px;
-  text-align: center;
-  box-shadow: 0 15px 60px #0008;
-}
-.orb {
-  width: 145px;
-  height: 145px;
-  border: 2px solid #31523d;
-  border-radius: 50%;
-  margin: 30px auto 22px;
-  display:grid;
-  place-items:center;
-  background: #0d1911;
-  color: var(--green);
-  box-shadow: 0 0 35px #39ff8815, inset 0 0 25px #39ff880c;
-  transition: .25s;
-}
-.orb.active {
-  border-color: var(--green);
-  box-shadow: 0 0 35px #39ff8870, inset 0 0 35px #39ff8820;
-  animation: pulse 1.2s infinite alternate;
-}
-@keyframes pulse {
-  from { transform: scale(1); }
-  to { transform: scale(1.045); }
-}
-.orb span { font-size: 42px; }
-h2 { font-size: 18px; margin: 0 0 7px; }
-p { color:#8ca895; font-size:13px; }
-button {
-  width:100%; padding:16px; margin-top:12px;
-  border-radius:14px; border:1px solid #31513c;
-  background:#17251b; color:#eafff0;
-  font:600 15px system-ui; cursor:pointer;
-}
-button.primary {
-  background:var(--green); color:#07140b;
-  border-color:var(--green);
-  box-shadow:0 0 22px #39ff8825;
-}
-button:active { transform:scale(.98); }
-button:disabled { opacity:.4; cursor:not-allowed; }
-.grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-footer { text-align:center; margin-top:22px; }
-</style>
-</head>
-<body>
-<main>
-  <header>
-    <div>
-      <h1>CXPHER<span style="color:#39ff88">.</span></h1>
-      <small>HARDWARE CONTROL SYSTEM</small>
-    </div>
-    <div class="status" id="status">● OFFLINE</div>
-  </header>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080d0a">
+  <title>CXPHER // BUZZER CONTROL</title>
 
-  <section class="panel">
-    <small>DEVICE / KY-012</small>
-    <div class="orb" id="orb"><span>ϟ</span></div>
-    <h2 id="state">SYSTEM STANDBY</h2>
-    <p id="message">Connect your ESP32 to begin.</p>
-
-    <button class="primary" id="connect">⌁ CONNECT ESP32</button>
-    <button id="power" disabled>POWER ON</button>
-
-    <div class="grid">
-      <button id="pulse" disabled>PULSE · 3 TIMES</button>
-      <button id="disconnect" disabled>DISCONNECT</button>
-    </div>
-    <p id="note">Web Bluetooth · Secure connection required</p>
-  </section>
-  <footer><small>CXPHER LABS · ESP32 PROJECT</small></footer>
-</main>
-
-<script>
-const $ = id => document.getElementById(id);
-let device, server, characteristic, active = false;
-
-function status(text) { $("status").textContent = "● " + text; }
-function paint(on) {
-  active = on;
-  $("orb").classList.toggle("active", on);
-  $("state").textContent = on ? "BUZZER ACTIVE" : "SYSTEM STANDBY";
-  $("power").textContent = on ? "POWER OFF" : "POWER ON";
-}
-async function send(command) {
-  if (!characteristic) throw Error("Connect to the ESP32 first.");
-  const data = new TextEncoder().encode(command);
-  if (characteristic.properties.writeWithoutResponse &&
-      !characteristic.properties.write) {
-    await characteristic.writeValueWithoutResponse(data);
-  } else {
-    await characteristic.writeValue(data);
-  }
-}
-$("connect").onclick = async () => {
-  try {
-    $("message").textContent = "Searching for ESP32...";
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: "Cxpher_Buzzer" }],
-      optionalServices: ["12345678-1234-1234-1234-1234567890ab"]
-    });
-    device.addEventListener("gattserverdisconnected", () => {
-      server = characteristic = null;
-      status("OFFLINE");
-      $("message").textContent = "Device disconnected.";
-      $("power").disabled = $("pulse").disabled = $("disconnect").disabled = true;
-      $("connect").disabled = false;
-      paint(false);
-    });
-    server = await device.gatt.connect();
-    const service = await server.getPrimaryService(
-      "12345678-1234-1234-1234-1234567890ab"
-    );
-    characteristic = await service.getCharacteristic(
-      "abcdefab-1234-1234-1234-abcdefabcdef"
-    );
-    status("CONNECTED");
-    $("message").textContent = "Bluetooth link established.";
-    $("connect").disabled = false;
-    $("power").disabled = $("pulse").disabled = $("disconnect").disabled = false;
-    paint(false);
-  } catch (e) {
-    $("message").textContent = e.message || "Connection failed.";
-    status("OFFLINE");
-  }
-};
-$("power").onclick = async () => {
-  try {
-    await send(active ? "OFF" : "ON");
-    paint(!active);
-  } catch (e) { $("message").textContent = e.message; }
-};
-$("pulse").onclick = async () => {
-  try {
-    for (let i = 0; i < 3; i++) {
-      await send("ON");
-      await new Promise(r => setTimeout(r, 250));
-      await send("OFF");
-      await new Promise(r => setTimeout(r, 250));
+  <style>
+    :root {
+      --bg: #080d0a;
+      --panel: #101813;
+      --panel2: #151f18;
+      --green: #73ff9c;
+      --green2: #32d968;
+      --text: #ecf5ee;
+      --muted: #829187;
+      --border: #25352a;
+      --red: #ff6565;
     }
-    paint(false);
-  } catch (e) { $("message").textContent = e.message; }
-};
-$("disconnect").onclick = () => {
-  if (device?.gatt?.connected) device.gatt.disconnect();
-};
-if (!navigator.bluetooth) {
-  $("message").textContent = "Open this page in a supported browser over HTTPS.";
-  $("connect").disabled = true;
-}
-</script>
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(ellipse at 50% 0%, #163321 0%, transparent 45%),
+        var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, sans-serif;
+      padding: 24px 16px 36px;
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:focus-visible {
+      outline: 2px solid var(--green);
+      outline-offset: 3px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+
+    .brand {
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: 2px;
+    }
+
+    .brand span {
+      color: var(--green);
+    }
+
+    .version {
+      font-size: 10px;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 8px;
+      letter-spacing: 1px;
+    }
+
+    .eyebrow {
+      color: var(--green);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 3px;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: clamp(29px, 8vw, 42px);
+      line-height: 1.05;
+      letter-spacing: -1.5px;
+      margin: 0;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 12px 0 22px;
+    }
+
+    .status-card {
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, #121c15, #0c120e);
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 18px;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+    }
+
+    .orb {
+      width: 13px;
+      height: 13px;
+      flex: 0 0 13px;
+      border-radius: 50%;
+      background: #526057;
+      box-shadow: 0 0 0 5px #26332a;
+    }
+
+    .orb.connected {
+      background: var(--green);
+      box-shadow: 0 0 18px #73ff9c80, 0 0 0 5px #24432d;
+    }
+
+    .status-copy {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .status-title {
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 1px;
+    }
+
+    .status-detail {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+      overflow-wrap: anywhere;
+    }
+
+    .connect {
+      width: 100%;
+      margin-top: 17px;
+      padding: 15px;
+      background: var(--green);
+      color: #07130a;
+      border: 0;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 1.4px;
+      transition: transform .15s, background .15s;
+    }
+
+    .connect:active,
+    .effect:active,
+    .control:active {
+      transform: scale(.98);
+    }
+
+    .connect:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin: 26px 0 12px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 2px;
+    }
+
+    .section-note {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    .effects {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .effect {
+      position: relative;
+      min-height: 120px;
+      text-align: left;
+      border: 1px solid var(--border);
+      background: linear-gradient(145deg, var(--panel2), var(--panel));
+      color: var(--text);
+      border-radius: 14px;
+      padding: 15px;
+      transition: border-color .15s, background .15s, transform .15s;
+    }
+
+    .effect:hover:not(:disabled) {
+      border-color: #52765c;
+    }
+
+    .effect.active {
+      border-color: var(--green);
+      background: linear-gradient(145deg, #1b3824, #101a13);
+      box-shadow: inset 0 0 20px #73ff9c08;
+    }
+
+    .effect:disabled,
+    .control:disabled {
+      opacity: .38;
+      cursor: not-allowed;
+    }
+
+    .effect-icon {
+      display: block;
+      font-size: 24px;
+      margin-bottom: 13px;
+      color: var(--green);
+    }
+
+    .effect-name {
+      display: block;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .7px;
+    }
+
+    .effect-desc {
+      display: block;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.5;
+      margin-top: 5px;
+    }
+
+    .tag {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      color: var(--green);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .control {
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #111a14;
+      color: var(--text);
+      padding: 14px 10px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 1px;
+    }
+
+    .control.power {
+      border-color: #315a3b;
+      color: var(--green);
+    }
+
+    .control.stop {
+      color: #ff8585;
+      border-color: #503030;
+    }
+
+    .disconnect {
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 1.5px;
+    }
+
+    .disconnect:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+
+    .activity {
+      margin-top: 20px;
+      background: #0b110d;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+
+    .activity-label {
+      font-size: 9px;
+      color: var(--muted);
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+
+    .activity-text {
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .footer {
+      margin-top: 24px;
+      text-align: center;
+      color: #59665c;
+      font-size: 9px;
+      line-height: 1.8;
+      letter-spacing: 1px;
+    }
+
+    .warning {
+      margin-top: 14px;
+      font-size: 10px;
+      line-height: 1.6;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 350px) {
+      body {
+        padding-inline: 11px;
+      }
+
+      .effect {
+        padding: 12px;
+      }
+
+      .effect-name {
+        font-size: 11px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">CXPHER<span>.</span></div>
+      <div class="version">BLE SYSTEM / 01</div>
+    </header>
+
+    <div class="eyebrow">HARDWARE CONTROL</div>
+    <h1>Buzzer<br>Command Center.</h1>
+    <p class="subtitle">
+      Wireless control interface // ESP32 BLE<br>
+      Five patterns. One very small buzzer.
+    </p>
+
+    <section class="status-card">
+      <div class="status-row">
+        <div id="orb" class="orb"></div>
+        <div class="status-copy">
+          <div id="statusTitle" class="status-title">DISCONNECTED</div>
+          <div id="statusDetail" class="status-detail">
+            Connect to your ESP32 to begin.
+          </div>
+        </div>
+      </div>
+
+      <button id="connectBtn" class="connect">
+        CONNECT ESP32 ↗
+      </button>
+    </section>
+
+    <div class="section-head">
+      <div class="section-title">SOUND EFFECTS</div>
+      <div class="section-note">SELECT A PATTERN</div>
+    </div>
+
+    <section class="effects">
+      <button class="effect" data-command="RAPID" disabled>
+        <span class="tag">01</span>
+        <span class="effect-icon">ϟ</span>
+        <span class="effect-name">RAPID FIRE</span>
+        <span class="effect-desc">Fast repeating pulses</span>
+      </button>
+
+      <button class="effect" data-command="SOS" disabled>
+        <span class="tag">02</span>
+        <span class="effect-icon">⌁</span>
+        <span class="effect-name">SOS SIGNAL</span>
+        <span class="effect-desc">Short and long signals</span>
+      </button>
+
+      <button class="effect" data-command="ALARM" disabled>
+        <span class="tag">03</span>
+        <span class="effect-icon">◉</span>
+        <span class="effect-name">ALARM LOOP</span>
+        <span class="effect-desc">Repeating alert rhythm</span>
+      </button>
+
+      <button class="effect" data-command="COUNTDOWN" disabled>
+        <span class="tag">04</span>
+        <span class="effect-icon">◷</span>
+        <span class="effect-name">COUNTDOWN</span>
+        <span class="effect-desc">Runs once, then stops</span>
+      </button>
+
+      <button class="effect" data-command="GLITCH" disabled>
+        <span class="tag">05</span>
+        <span class="effect-icon">⌘</span>
+        <span class="effect-name">GLITCH MODE</span>
+        <span class="effect-desc">Irregular digital rhythm</span>
+      </button>
+
+      <button class="effect" data-command="PULSE" disabled>
+        <span class="tag">06</span>
+        <span class="effect-icon">⌁</span>
+        <span class="effect-name">SINGLE PULSE</span>
+        <span class="effect-desc">One short pulse sequence</span>
+      </button>
+    </section>
+
+    <div class="section-head">
+      <div class="section-title">MANUAL CONTROL</div>
+      <div class="section-note">DIRECT COMMANDS</div>
+    </div>
+
+    <section class="controls">
+      <button id="powerBtn" class="control power" disabled>
+        ▶ POWER ON
+      </button>
+      <button id="stopBtn" class="control stop" disabled>
+        ■ STOP ALL
+      </button>
+    </section>
+
+    <button id="disconnectBtn" class="disconnect" disabled>
+      DISCONNECT DEVICE
+    </button>
+
+    <section class="activity">
+      <div class="activity-label">SYSTEM ACTIVITY</div>
+      <div id="activityText" class="activity-text">
+        Waiting for connection...
+      </div>
+    </section>
+
+    <p class="warning">
+      Use responsibly. The active buzzer can be loud.
+      Avoid prolonged use close to your ears.
+    </p>
+
+    <footer class="footer">
+      CXPHER LABS // PERSONAL ESP32 PROJECT<br>
+      BUILT FOR THE LATE-NIGHT WORKSHOP
+    </footer>
+  </main>
+
+  <script>
+    const SERVICE_UUID =
+      "12345678-1234-1234-1234-1234567890ab";
+
+    const CHARACTERISTIC_UUID =
+      "abcdefab-1234-1234-1234-abcdefabcdef";
+
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const powerBtn = document.getElementById("powerBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const statusTitle = document.getElementById("statusTitle");
+    const statusDetail = document.getElementById("statusDetail");
+    const activityText = document.getElementById("activityText");
+    const orb = document.getElementById("orb");
+    const effectButtons = [...document.querySelectorAll(".effect")];
+
+    let device = null;
+    let characteristic = null;
+    let busy = false;
+
+    function setActivity(message) {
+      activityText.textContent = message;
+    }
+
+    function setControlsEnabled(enabled) {
+      powerBtn.disabled = !enabled;
+      stopBtn.disabled = !enabled;
+      disconnectBtn.disabled = !enabled;
+      effectButtons.forEach(button => {
+        button.disabled = !enabled;
+      });
+    }
+
+    function clearActiveEffect() {
+      effectButtons.forEach(button => {
+        button.classList.remove("active");
+      });
+    }
+
+    function setConnected(connected) {
+      orb.classList.toggle("connected", connected);
+      statusTitle.textContent = connected ? "CONNECTED" : "DISCONNECTED";
+      statusDetail.textContent = connected
+        ? (device?.name || "Cxpher_Buzzer") + " // BLE ACTIVE"
+        : "Connect to your ESP32 to begin.";
+
+      connectBtn.disabled = connected;
+      connectBtn.textContent = connected
+        ? "ESP32 CONNECTED ✓"
+        : "CONNECT ESP32 ↗";
+
+      setControlsEnabled(connected);
+    }
+
+    function onDisconnected() {
+      characteristic = null;
+      clearActiveEffect();
+      setConnected(false);
+      setActivity("Device disconnected.");
+    }
+
+    async function connectDevice() {
+      if (!navigator.bluetooth) {
+        setActivity("Web Bluetooth is unavailable. Open this page in Chrome on Android over HTTPS.");
+        return;
+      }
+
+      connectBtn.disabled = true;
+      connectBtn.textContent = "SEARCHING...";
+
+      try {
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ name: "Cxpher_Buzzer" }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        device.addEventListener(
+          "gattserverdisconnected",
+          onDisconnected
+        );
+
+        setActivity("Connecting to " + device.name + "...");
+
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+
+        characteristic = await service.getCharacteristic(
+          CHARACTERISTIC_UUID
+        );
+
+        setConnected(true);
+        setActivity("Bluetooth link established.");
+      } catch (error) {
+        characteristic = null;
+        setConnected(false);
+
+        if (error.name === "NotFoundError") {
+          setActivity("No device selected. Try connecting again.");
+        } else {
+          setActivity("Connection failed: " + error.message);
+        }
+      } finally {
+        if (!characteristic) {
+          connectBtn.disabled = false;
+          connectBtn.textContent = "CONNECT ESP32 ↗";
+        }
+      }
+    }
+
+    async function sendCommand(command) {
+      if (!characteristic) {
+        setActivity("Connect to the ESP32 first.");
+        return;
+      }
+
+      if (busy) return;
+      busy = true;
+
+      try {
+        const data = new TextEncoder().encode(command);
+
+        if (typeof characteristic.writeValueWithResponse === "function") {
+          await characteristic.writeValueWithResponse(data);
+        } else {
+          await characteristic.writeValue(data);
+        }
+
+        clearActiveEffect();
+
+        const selected = effectButtons.find(
+          button => button.dataset.command === command
+        );
+
+        if (selected) {
+          selected.classList.add("active");
+        }
+
+        if (command === "OFF" || command === "STOP") {
+          clearActiveEffect();
+          setActivity("Command sent: STOP ALL");
+        } else if (command === "ON") {
+          setActivity("Command sent: POWER ON");
+        } else {
+          setActivity("Effect running: " + command);
+        }
+      } catch (error) {
+        setActivity("Command failed: " + error.message);
+      } finally {
+        busy = false;
+      }
+    }
+
+    connectBtn.addEventListener("click", connectDevice);
+
+    effectButtons.forEach(button => {
+      button.addEventListener("click", () => {
+        sendCommand(button.dataset.command);
+      });
+    });
+
+    powerBtn.addEventListener("click", () => {
+      sendCommand("ON");
+    });
+
+    stopBtn.addEventListener("click", () => {
+      sendCommand("STOP");
+    });
+
+    disconnectBtn.addEventListener("click", () => {
+      if (device?.gatt?.connected) {
+        device.gatt.disconnect();
+      } else {
+        onDisconnected();
+      }
+    });
+
+    setConnected(false);
+
+    if (!navigator.bluetooth) {
+      statusDetail.textContent =
+        "Web Bluetooth unavailable in this browser.";
+    }
+  </script>
 </body>
-                                                      </html>
-                                                      
+  </html>
+  
